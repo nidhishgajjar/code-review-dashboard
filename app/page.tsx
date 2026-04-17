@@ -302,6 +302,11 @@ export default async function Page() {
 
       <footer className="site">
         <div>
+          <span>powered by </span>
+          <a href="https://github.com/OpenHands/software-agent-sdk">OpenHands</a>
+          {" on "}
+          <a href="https://docs.orbcloud.dev">Orb Cloud</a>
+          {"  ·  "}
           <a href="https://github.com/nidhishgajjar/code-review-agent">agent source</a>
           {"  ·  "}
           <a href="https://github.com/nidhishgajjar/code-review-dashboard">dashboard source</a>
