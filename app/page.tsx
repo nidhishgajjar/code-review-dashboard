@@ -310,14 +310,14 @@ export default async function Page() {
           <a href="https://github.com/nidhishgajjar/code-review-agent">agent source</a>
           {"  ·  "}
           <a href="https://github.com/nidhishgajjar/code-review-dashboard">dashboard source</a>
-          {"  ·  refreshes every 10 s"}
+          {"  ·  auto-refresh every 5 min"}
         </div>
         <div className="right">automated reviews, not a replacement for a human reviewer · MIT licence</div>
       </footer>
 
       <script
         dangerouslySetInnerHTML={{
-          __html: `setTimeout(function(){location.reload()}, 10000);`,
+          __html: `setTimeout(function(){location.reload()}, 300000);`,
         }}
       />
     </main>
