@@ -187,10 +187,9 @@ header.site {
 .agent-card .state { font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-faint); font-weight: 700; }
 
 /* ── Stats ──────────────────────────────────────────────── */
-.stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
-@media (max-width: 720px) {
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+@media (max-width: 960px) {
   .stats-grid { grid-template-columns: 1fr 1fr; }
-  .stats-grid .stat:last-child { grid-column: span 2; }
 }
 .stat {
   border: 1px solid var(--line); background: var(--surface);

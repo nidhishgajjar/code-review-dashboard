@@ -167,6 +167,21 @@ export default async function Page({
       ? statsLoaded.reduce((sum, a) => sum + (a.stats?.est_cost_usd ?? 0), 0)
       : null;
 
+  // Weighted sleep %: total sleep across all agents / total wall time. Weights
+  // by wall_secs so agents created mid-window don't skew the average.
+  const sleepTotals = statsLoaded.reduce(
+    (acc, a) => {
+      acc.sleep += a.stats?.sleep_secs ?? 0;
+      acc.wall += a.stats?.wall_secs ?? 0;
+      return acc;
+    },
+    { sleep: 0, wall: 0 },
+  );
+  const poolSleepPct =
+    sleepTotals.wall > 0
+      ? Math.round((sleepTotals.sleep / sleepTotals.wall) * 100)
+      : null;
+
   const livePill =
     agg.orb === "reviewing" || agg.orb === "awake" || agg.orb === "waking"
       ? { cls: "", label: "live" }
@@ -274,6 +289,11 @@ export default async function Page({
             <div className="eye">cloud cost</div>
             <div className="v">{totalCost != null ? `$${totalCost.toFixed(2)}` : "—"}</div>
             <div className="sub">≈ past 30 days on orb · runtime plus disk</div>
+          </div>
+          <div className="stat">
+            <div className="eye">asleep</div>
+            <div className="v">{poolSleepPct != null ? `${poolSleepPct}%` : "—"}</div>
+            <div className="sub">of the last 30 days · averaged across the pool</div>
           </div>
         </div>
       </section>
