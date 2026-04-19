@@ -48,3 +48,36 @@ export async function fetchUsage(): Promise<Usage | null> {
   if (!r.ok) return null;
   return r.json();
 }
+
+export type ComputerStats = {
+  window: string;
+  period_start: string;
+  period_end: string;
+  wall_secs: number;
+  active_secs: number;
+  sleep_secs: number;
+  sleep_pct: number;
+  active_pct: number;
+  llm_calls: number;
+  checkpoints: number;
+  ckpt_full: number;
+  ckpt_incremental: number;
+  failures: number;
+  runtime_gb_hours: number;
+  disk_gb_hours: number;
+  est_cost_usd: number;
+  last_active_ago_secs: number | null;
+  avg_restore_ms: number | null;
+};
+
+export async function fetchStats(
+  computerId: string,
+  window: "30d" | "lifetime" = "30d",
+): Promise<ComputerStats | null> {
+  const r = await fetch(
+    `${API}/v1/computers/${computerId}/stats?window=${window}`,
+    { headers: headers(), cache: "no-store" },
+  );
+  if (!r.ok) return null;
+  return r.json();
+}

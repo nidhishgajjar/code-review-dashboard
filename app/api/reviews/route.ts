@@ -6,11 +6,21 @@ export const revalidate = 0;
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "20", 10) || 20, 50);
-  const reviews = await loadReviews(limit);
+  const size = Math.min(
+    Math.max(1, parseInt(url.searchParams.get("size") ?? "20", 10) || 20),
+    50,
+  );
+  const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10) || 1);
+  const { rows, total } = await loadReviews({
+    limit: size,
+    offset: (page - 1) * size,
+  });
   return NextResponse.json({
-    reviews,
-    total: reviews.length,
-    last_review_ts: reviews[0]?.reviewed_at ?? null,
+    reviews: rows,
+    total,
+    page,
+    size,
+    total_pages: Math.max(1, Math.ceil(total / size)),
+    last_review_ts: rows[0]?.reviewed_at ?? null,
   });
 }

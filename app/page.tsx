@@ -1,18 +1,35 @@
 import { getAgents } from "@/lib/config";
-import { fetchAgentState, fetchUsage, type AgentState } from "@/lib/orb";
-import { loadReviews, type ReviewRow } from "@/lib/reviews";
+import {
+  fetchAgentState,
+  fetchStats,
+  fetchUsage,
+  type AgentState,
+  type ComputerStats,
+} from "@/lib/orb";
+import { loadReviews } from "@/lib/reviews";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-async function loadAgentStates() {
+const PAGE_SIZE = 20;
+
+type AgentRow = {
+  id: string;
+  repos: string[];
+  state: AgentState;
+  stats: ComputerStats | null;
+};
+
+async function loadAgentStates(): Promise<AgentRow[]> {
   const agents = getAgents();
   return Promise.all(
-    agents.map(async (a) => ({
-      id: a.id,
-      repos: a.repos,
-      state: await fetchAgentState(a.computer_id),
-    })),
+    agents.map(async (a) => {
+      const [state, stats] = await Promise.all([
+        fetchAgentState(a.computer_id).catch((): AgentState => "absent"),
+        fetchStats(a.computer_id).catch(() => null),
+      ]);
+      return { id: a.id, repos: a.repos, state, stats };
+    }),
   );
 }
 
@@ -104,25 +121,40 @@ function fmtState(s: AgentState): { label: string; cls: string } {
   }
 }
 
-export default async function Page() {
-  let agentStates: Awaited<ReturnType<typeof loadAgentStates>> = [];
-  let reviews: ReviewRow[] = [];
-  let usage: Awaited<ReturnType<typeof fetchUsage>> = null;
+type PageSearchParams = { page?: string | string[] };
 
-  try {
-    agentStates = await loadAgentStates();
-  } catch {}
-  try {
-    reviews = await loadReviews(20);
-  } catch {}
-  try {
-    usage = await fetchUsage();
-  } catch {}
+function parsePage(raw: string | string[] | undefined): number {
+  const v = Array.isArray(raw) ? raw[0] : raw;
+  const n = parseInt(v ?? "1", 10);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<PageSearchParams>;
+}) {
+  const sp = await searchParams;
+  const requestedPage = parsePage(sp.page);
+  const offset = (requestedPage - 1) * PAGE_SIZE;
+
+  const [agentStates, reviewsPage, usage] = await Promise.all([
+    loadAgentStates().catch(() => [] as AgentRow[]),
+    loadReviews({ limit: PAGE_SIZE, offset }).catch(() => ({
+      rows: [],
+      total: 0,
+    })),
+    fetchUsage().catch(() => null),
+  ]);
+
+  const reviews = reviewsPage.rows;
+  const totalReviews = reviewsPage.total;
+  const totalPages = Math.max(1, Math.ceil(totalReviews / PAGE_SIZE));
+  const currentPage = Math.min(requestedPage, totalPages);
 
   const stateList = agentStates.map((a) => a.state);
   const agg = aggregateOrbState(stateList);
   const awakeCount = stateList.filter((s) => s === "running" || s === "frozen").length;
-  const totalReviews = reviews.length;
   const lastReviewTs = reviews[0]?.reviewed_at ?? 0;
   const reposWatched = new Set(agentStates.flatMap((a) => a.repos)).size;
 
@@ -186,6 +218,10 @@ export default async function Page() {
           <div className="agent-grid">
             {agentStates.map((a) => {
               const f = fmtState(a.state);
+              const sleepPct =
+                a.stats && a.stats.wall_secs > 0
+                  ? Math.round(a.stats.sleep_pct * 100)
+                  : null;
               return (
                 <div key={a.id} className={`agent-card ${f.cls}`}>
                   <span className="dot" />
@@ -194,6 +230,11 @@ export default async function Page() {
                     <div className="repos" title={a.repos.join(", ")}>
                       {a.repos.length === 0 ? "no repos assigned" : a.repos.join(", ")}
                     </div>
+                    {sleepPct != null && (
+                      <div className="agent-sleep">
+                        asleep {sleepPct}% of the last 30 days
+                      </div>
+                    )}
                   </div>
                   <div className="state">{f.label}</div>
                 </div>
@@ -240,46 +281,84 @@ export default async function Page() {
           request itself.
         </p>
         {reviews.length === 0 ? (
-          <div className="empty-rv">warming up — no reviews posted yet.</div>
-        ) : (
-          <div className="reviews-list">
-            {reviews.map((r, i) => (
-              <div key={`${r.repo}#${r.pr_number}`} className="rv-row">
-                <div className="rv-n">{String(i + 1).padStart(2, "0")}</div>
-                <div className="rv-body">
-                  <div className="rv-title">
-                    <a href={r.comment_url ?? r.pr_url}>{r.pr_title}</a>
-                  </div>
-                  <div className="rv-id">
-                    {r.repo}#{r.pr_number}
-                    {r.author ? ` · by ${r.author}` : ""}
-                    {" · "}
-                    <span style={{ color: "var(--ink-faint)" }}>{r.agent_id}</span>
-                  </div>
-                  {r.summary && <div className="rv-summary">{r.summary}</div>}
-                  <div className="rv-tags">
-                    {r.assessment && (
-                      <span
-                        className={`rv-tag assessment ${
-                          r.assessment === "request-changes"
-                            ? "warn"
-                            : r.assessment === "approve"
-                            ? "ok"
-                            : ""
-                        }`}
-                      >
-                        {r.assessment}
-                      </span>
-                    )}
-                    {r.issues.critical > 0 && <span className="rv-tag crit">{r.issues.critical} critical</span>}
-                    {r.issues.warning > 0 && <span className="rv-tag warn">{r.issues.warning} warning</span>}
-                    {r.issues.suggestion > 0 && <span className="rv-tag">{r.issues.suggestion} suggestion</span>}
-                  </div>
-                </div>
-                <div className="rv-ago">{timeAgo(r.reviewed_at)}</div>
-              </div>
-            ))}
+          <div className="empty-rv">
+            {currentPage > 1
+              ? "nothing on this page."
+              : "warming up — no reviews posted yet."}
           </div>
+        ) : (
+          <>
+            <div className="reviews-list">
+              {reviews.map((r, i) => {
+                const n = offset + i + 1;
+                return (
+                  <div key={`${r.repo}#${r.pr_number}`} className="rv-row">
+                    <div className="rv-n">{String(n).padStart(2, "0")}</div>
+                    <div className="rv-body">
+                      <div className="rv-title">
+                        <a href={r.comment_url ?? r.pr_url}>{r.pr_title}</a>
+                      </div>
+                      <div className="rv-id">
+                        {r.repo}#{r.pr_number}
+                        {r.author ? ` · by ${r.author}` : ""}
+                        {" · "}
+                        <span style={{ color: "var(--ink-faint)" }}>{r.agent_id}</span>
+                      </div>
+                      {r.summary && <div className="rv-summary">{r.summary}</div>}
+                      <div className="rv-tags">
+                        {r.assessment && (
+                          <span
+                            className={`rv-tag assessment ${
+                              r.assessment === "request-changes"
+                                ? "warn"
+                                : r.assessment === "approve"
+                                ? "ok"
+                                : ""
+                            }`}
+                          >
+                            {r.assessment}
+                          </span>
+                        )}
+                        {r.issues.critical > 0 && <span className="rv-tag crit">{r.issues.critical} critical</span>}
+                        {r.issues.warning > 0 && <span className="rv-tag warn">{r.issues.warning} warning</span>}
+                        {r.issues.suggestion > 0 && <span className="rv-tag">{r.issues.suggestion} suggestion</span>}
+                      </div>
+                    </div>
+                    <div className="rv-ago">{timeAgo(r.reviewed_at)}</div>
+                  </div>
+                );
+              })}
+            </div>
+            {totalPages > 1 && (
+              <nav className="rv-pager" aria-label="reviews pagination">
+                {currentPage > 1 ? (
+                  <a
+                    className="rv-pager-btn"
+                    href={currentPage === 2 ? "/" : `/?page=${currentPage - 1}`}
+                    rel="prev"
+                  >
+                    ← newer
+                  </a>
+                ) : (
+                  <span className="rv-pager-btn disabled">← newer</span>
+                )}
+                <span className="rv-pager-info">
+                  page {currentPage} of {totalPages}
+                </span>
+                {currentPage < totalPages ? (
+                  <a
+                    className="rv-pager-btn"
+                    href={`/?page=${currentPage + 1}`}
+                    rel="next"
+                  >
+                    older →
+                  </a>
+                ) : (
+                  <span className="rv-pager-btn disabled">older →</span>
+                )}
+              </nav>
+            )}
+          </>
         )}
       </section>
 

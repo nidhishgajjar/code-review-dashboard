@@ -179,6 +179,11 @@ header.site {
 .agent-card .body { min-width: 0; }
 .agent-card .name { font-family: var(--serif); font-size: 0.98rem; color: var(--ink); margin-bottom: 0.15rem; }
 .agent-card .repos { font-size: 0.8rem; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agent-card .agent-sleep {
+  font-size: 0.72rem; color: var(--ink-faint);
+  margin-top: 0.3rem;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+}
 .agent-card .state { font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-faint); font-weight: 700; }
 
 /* ── Stats ──────────────────────────────────────────────── */
@@ -241,6 +246,29 @@ header.site {
 .rv-tag.ok   { color: hsl(140, 35%, 35%); border-color: hsla(140, 35%, 40%, 0.35); }
 .rv-tag.assessment { text-transform: uppercase; letter-spacing: 0.1em; }
 .rv-ago { font-size: 0.82rem; color: var(--ink-soft); white-space: nowrap; padding-top: 4px; }
+
+.rv-pager {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 1rem; padding: 1.2rem 0 0.2rem;
+  border-top: 1px solid var(--line); margin-top: 0.3rem;
+}
+.rv-pager-btn {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.8rem; color: var(--ink-soft);
+  border: 1px solid var(--line-2); border-radius: 99px;
+  padding: 0.35rem 0.9rem; text-decoration: none;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.rv-pager-btn:hover { color: var(--ink); border-color: var(--accent); }
+.rv-pager-btn.disabled {
+  opacity: 0.4; pointer-events: none;
+  border-style: dashed;
+}
+.rv-pager-info {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.78rem; color: var(--ink-faint);
+  letter-spacing: 0.04em;
+}
 
 .empty-rv {
   padding: 2rem 1rem; text-align: center;
