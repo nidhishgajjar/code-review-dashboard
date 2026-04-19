@@ -220,7 +220,7 @@ export default async function Page({
               const f = fmtState(a.state);
               const sleepPct =
                 a.stats && a.stats.wall_secs > 0
-                  ? Math.round(a.stats.sleep_pct * 100)
+                  ? Math.round(a.stats.sleep_pct)
                   : null;
               return (
                 <div key={a.id} className={`agent-card ${f.cls}`}>
