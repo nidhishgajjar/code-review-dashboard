@@ -46,7 +46,7 @@ export type OurComment = {
 export async function fetchOurLatestComment(repo: string, prNumber: number, login: string): Promise<OurComment | null> {
   const r = await fetch(`${API}/repos/${repo}/issues/${prNumber}/comments?per_page=100`, {
     headers: headers(),
-    next: { revalidate: 60 },
+    next: { revalidate: 3600 },
   });
   if (!r.ok) return null;
   const comments = (await r.json()) as Array<{
@@ -68,7 +68,7 @@ export async function fetchOurLatestComment(repo: string, prNumber: number, logi
 }
 
 export async function fetchViewerLogin(): Promise<string | null> {
-  const r = await fetch(`${API}/user`, { headers: headers(), next: { revalidate: 3600 } });
+  const r = await fetch(`${API}/user`, { headers: headers(), next: { revalidate: 86400 } });
   if (!r.ok) return null;
   const d = await r.json();
   return d.login ?? null;

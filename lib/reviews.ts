@@ -1,13 +1,11 @@
-import { getAgents } from "./config";
+import { getAgents, requireGithubToken } from "./config";
 import {
   fetchOurLatestComment,
   fetchViewerLogin,
   parseAssessment,
   parseSummary,
   countIssues,
-  type PRInfo,
 } from "./github";
-import { requireGithubToken } from "./config";
 
 const API = "https://api.github.com";
 
@@ -17,32 +15,6 @@ function ghHeaders() {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
   };
-}
-
-// List PRs for a repo (any state). Cheap for small fixture repos; for big repos
-// we'd paginate or cap. per_page=50 keeps each call under the secondary limits.
-async function listRepoPrs(repo: string): Promise<PRInfo[]> {
-  const r = await fetch(
-    `${API}/repos/${repo}/pulls?state=all&per_page=50&sort=updated&direction=desc`,
-    { headers: ghHeaders(), next: { revalidate: 60 } },
-  );
-  if (!r.ok) return [];
-  const data = (await r.json()) as Array<{
-    number: number;
-    title: string;
-    html_url: string;
-    user?: { login?: string };
-    merged_at: string | null;
-    state: string;
-  }>;
-  return data.map((p) => ({
-    number: p.number,
-    title: p.title,
-    html_url: p.html_url,
-    user: p.user?.login ?? "",
-    merged: !!p.merged_at,
-    state: p.state,
-  }));
 }
 
 export type ReviewRow = {
@@ -55,7 +27,7 @@ export type ReviewRow = {
   pr_merged: boolean;
   author: string;
   comment_url: string | null;
-  reviewed_at: number; // unix ts
+  reviewed_at: number;
   assessment: string | null;
   summary: string | null;
   issues: { critical: number; warning: number; suggestion: number };
@@ -71,11 +43,50 @@ export type LoadReviewsResult = {
   total: number;
 };
 
+// Search API result item (subset we use).
+type SearchItem = {
+  number: number;
+  title: string;
+  html_url: string;
+  state: string;
+  user?: { login?: string };
+  repository_url: string; // https://api.github.com/repos/OWNER/REPO
+  pull_request?: { merged_at?: string | null };
+  updated_at: string;
+};
+
+// Walk GitHub search to find every PR our login ever commented on. Search
+// caps at 1000 results (10 pages × 100) and 30 req/min — plenty of headroom
+// for one dashboard render. Replaces the old per-repo walk (72 repos × 50
+// comments = 3,600+ calls) with ~4-10 search calls, plus one comment fetch
+// per matching PR that lands in a watched repo.
+async function searchOurPrs(login: string): Promise<SearchItem[]> {
+  const q = encodeURIComponent(`commenter:${login} type:pr`);
+  const all: SearchItem[] = [];
+  for (let page = 1; page <= 10; page++) {
+    const r = await fetch(
+      `${API}/search/issues?q=${q}&sort=updated&order=desc&per_page=100&page=${page}`,
+      { headers: ghHeaders(), next: { revalidate: 300 } },
+    );
+    if (!r.ok) break;
+    const d = (await r.json()) as { items?: SearchItem[]; total_count?: number };
+    const items = d.items ?? [];
+    all.push(...items);
+    if (items.length < 100) break;
+    if (all.length >= (d.total_count ?? 0)) break;
+  }
+  return all;
+}
+
+function ownerRepo(repository_url: string): string {
+  return repository_url.replace(`${API}/repos/`, "");
+}
+
 /**
- * Fetch every PR across every watched repo that has a review comment from us,
- * merge-sort by review time, and return a page. `total` is the full merged
- * count — callers use it to drive pagination UI. Upstream GitHub fetch cost
- * is the same regardless of page; slicing happens in-memory after merge.
+ * Find every PR across every watched repo with a review from us, merge-sort
+ * by review time, return a page. Uses GitHub search + selective comment
+ * fetches — cheap enough to fit comfortably under the 5000/hr core limit
+ * and nowhere near the secondary (concurrency) limit.
  */
 export async function loadReviews(
   opts: LoadReviewsOptions = {},
@@ -87,46 +98,53 @@ export async function loadReviews(
   const login = await fetchViewerLogin();
   if (!login) return { rows: [], total: 0 };
 
-  // map repo -> agent_id
   const repoToAgent = new Map<string, string>();
   for (const a of agents) {
     for (const r of a.repos) repoToAgent.set(r, a.id);
   }
 
-  // Fetch all repos in parallel — previous implementation was serial per-repo.
-  const perRepo = await Promise.all(
-    Array.from(repoToAgent.entries()).map(async ([repo, agentId]) => {
-      const prs = await listRepoPrs(repo);
-      const withComments = await Promise.all(
-        prs.map(async (pr) => {
-          const c = await fetchOurLatestComment(repo, pr.number, login);
-          return { pr, comment: c };
-        }),
-      );
-      const rows: ReviewRow[] = [];
-      for (const { pr, comment } of withComments) {
-        if (!comment) continue;
-        rows.push({
+  const items = await searchOurPrs(login);
+  const matches = items.filter((it) => repoToAgent.has(ownerRepo(it.repository_url)));
+
+  // Bounded concurrency for comment fetches. 6 is low enough to stay under
+  // GitHub's secondary (concurrent request) limit even when several dashboard
+  // instances render at once.
+  const concurrency = 6;
+  const rows: ReviewRow[] = new Array(matches.length);
+  let cursor = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, matches.length) }, async () => {
+      while (true) {
+        const idx = cursor++;
+        if (idx >= matches.length) return;
+        const it = matches[idx];
+        const repo = ownerRepo(it.repository_url);
+        const agentId = repoToAgent.get(repo)!;
+        const c = await fetchOurLatestComment(repo, it.number, login);
+        if (!c) {
+          rows[idx] = null as unknown as ReviewRow;
+          continue;
+        }
+        rows[idx] = {
           agent_id: agentId,
           repo,
-          pr_number: pr.number,
-          pr_title: pr.title,
-          pr_url: pr.html_url,
-          pr_state: pr.state,
-          pr_merged: pr.merged,
-          author: pr.user,
-          comment_url: comment.url,
-          reviewed_at: Math.floor(new Date(comment.created_at).getTime() / 1000),
-          assessment: parseAssessment(comment.body),
-          summary: parseSummary(comment.body),
-          issues: countIssues(comment.body),
-        });
+          pr_number: it.number,
+          pr_title: it.title,
+          pr_url: it.html_url,
+          pr_state: it.state,
+          pr_merged: !!it.pull_request?.merged_at,
+          author: it.user?.login ?? "",
+          comment_url: c.url,
+          reviewed_at: Math.floor(new Date(c.created_at).getTime() / 1000),
+          assessment: parseAssessment(c.body),
+          summary: parseSummary(c.body),
+          issues: countIssues(c.body),
+        };
       }
-      return rows;
     }),
   );
 
-  const merged = perRepo.flat();
+  const merged = rows.filter(Boolean);
   merged.sort((a, b) => b.reviewed_at - a.reviewed_at);
   return { rows: merged.slice(offset, offset + limit), total: merged.length };
 }

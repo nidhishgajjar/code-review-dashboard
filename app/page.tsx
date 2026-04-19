@@ -2,14 +2,15 @@ import { getAgents } from "@/lib/config";
 import {
   fetchAgentState,
   fetchStats,
-  fetchUsage,
   type AgentState,
   type ComputerStats,
 } from "@/lib/orb";
 import { loadReviews } from "@/lib/reviews";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+// Using searchParams already forces dynamic rendering; omitting force-dynamic
+// lets inner fetch calls use Next.js Data Cache so we stay under GitHub's
+// rate limits across concurrent visitors and quick auto-refresh cycles.
+export const revalidate = 30;
 
 const PAGE_SIZE = 20;
 
@@ -138,13 +139,12 @@ export default async function Page({
   const requestedPage = parsePage(sp.page);
   const offset = (requestedPage - 1) * PAGE_SIZE;
 
-  const [agentStates, reviewsPage, usage] = await Promise.all([
+  const [agentStates, reviewsPage] = await Promise.all([
     loadAgentStates().catch(() => [] as AgentRow[]),
     loadReviews({ limit: PAGE_SIZE, offset }).catch(() => ({
       rows: [],
       total: 0,
     })),
-    fetchUsage().catch(() => null),
   ]);
 
   const reviews = reviewsPage.rows;
@@ -158,9 +158,14 @@ export default async function Page({
   const lastReviewTs = reviews[0]?.reviewed_at ?? 0;
   const reposWatched = new Set(agentStates.flatMap((a) => a.repos)).size;
 
-  const runtimeCost = usage ? usage.runtime_gb_hours * 0.005 : null;
-  const diskCost = usage ? (usage.disk_gb_hours / (30 * 24)) * 0.05 : null;
-  const totalCost = runtimeCost != null && diskCost != null ? runtimeCost + diskCost : null;
+  // Cost is the sum of per-computer 30-day est_cost_usd from the public stats
+  // endpoint. Same rates as the admin dashboard ($0.005/GB-hr runtime +
+  // $0.05/GB-month disk), so the two numbers reconcile.
+  const statsLoaded = agentStates.filter((a) => a.stats);
+  const totalCost =
+    statsLoaded.length > 0
+      ? statsLoaded.reduce((sum, a) => sum + (a.stats?.est_cost_usd ?? 0), 0)
+      : null;
 
   const livePill =
     agg.orb === "reviewing" || agg.orb === "awake" || agg.orb === "waking"
