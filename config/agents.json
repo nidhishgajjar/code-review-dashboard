@@ -1,0 +1,55 @@
+[
+  {
+    "id": "agent-1",
+    "computer_id": "5309d78d-131c-4e45-ac66-72b5d39d5ba1",
+    "url": "https://5309d78d.orbcloud.dev",
+    "repos": [
+      "ollama/ollama",
+      "agno-agi/agno",
+      "facebook/react",
+      "astral-sh/ruff",
+      "All-Hands-AI/OpenHands",
+      "Skyvern-AI/skyvern",
+      "microsoft/autogen",
+      "NousResearch/hermes-agent",
+      "fastapi/fastapi",
+      "Significant-Gravitas/AutoGPT",
+      "huggingface/lerobot"
+    ]
+  },
+  {
+    "id": "agent-2",
+    "computer_id": "f873b788-2c27-49ab-85d7-628cdfbf31bc",
+    "url": "https://f873b788.orbcloud.dev",
+    "repos": [
+      "nodejs/node",
+      "llamastack/llama-stack",
+      "langchain-ai/langgraph",
+      "biomejs/biome",
+      "vllm-project/vllm",
+      "anthropics/anthropic-cookbook",
+      "PrefectHQ/fastmcp",
+      "promptfoo/promptfoo",
+      "openai/codex",
+      "vercel/ai",
+      "expressjs/express"
+    ]
+  },
+  {
+    "id": "agent-3",
+    "computer_id": "05624e42-512c-42cc-b5ed-9abb4d5df0ce",
+    "url": "https://05624e42.orbcloud.dev",
+    "repos": [
+      "axios/axios",
+      "lodash/lodash",
+      "unslothai/unsloth",
+      "sgl-project/sglang",
+      "huggingface/transformers",
+      "langchain-ai/langchain",
+      "vercel/next.js",
+      "zed-industries/zed",
+      "google-gemini/gemini-cli",
+      "microsoft/vscode"
+    ]
+  }
+]

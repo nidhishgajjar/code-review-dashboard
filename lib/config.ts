@@ -1,3 +1,5 @@
+import agentsFromFile from "@/config/agents.json";
+
 export type AgentConfig = {
   id: string;
   computer_id: string;
@@ -5,16 +7,11 @@ export type AgentConfig = {
   repos: string[];
 };
 
+// Source of truth is config/agents.json (committed to the repo). Rotating a
+// CID is a git commit, not a Vercel env edit. AGENTS_JSON env var is no
+// longer read — delete it from Vercel to avoid drift.
 export function getAgents(): AgentConfig[] {
-  const raw = process.env.AGENTS_JSON;
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed as AgentConfig[];
-  } catch {
-    return [];
-  }
+  return agentsFromFile as AgentConfig[];
 }
 
 export function requireOrbKey(): string {
